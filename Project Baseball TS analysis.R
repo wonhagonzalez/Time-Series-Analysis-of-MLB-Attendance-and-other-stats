@@ -21,8 +21,8 @@ plot(Attend.ts, type = "l", main = "Total Attendance in MLB", ylab = "Total Atte
 plot(AttendperG.ts, type = "l", main = "Attendance per Game in MLB", ylab = "Attendance per Game", sub = "1871 - 2018") #Looks like an upward trend
 
 #Creating a training series and test series for forcasting later
-TrainHR.ts <- HR.ts[1:140]
-TestHR.ts <- HR.ts[141:148]
+TrainHR.ts <- HR.ts[1:130]
+TestHR.ts <- HR.ts[131:148]
 
 #Try decomposing trend and seasonality like in chapter 1
 ##Can't do that because I don't know any recognized periods.  For these annual values, I don't know if there are any natural cycles or patterns
@@ -69,14 +69,14 @@ HR.hw #HR.hw summary is same regardless of if I choose seasonal = multiplicative
 acf(resid(HR.hw)) #Looks like we can improve on this
 
 #See how well Holt-Winters predicts on the training and test HR time series
-HW.Train <- HoltWinters(TrainHR.ts, alpha = 1, gamma = F)
+HW.Train <- HoltWinters(TrainHR.ts, alpha = 1, gamma = F, seasonal = "mult")
 HW.Train
 
 #Predict and plot prediction
-HW.predict <- predict(HW.Train, n.ahead = 8)   
+HW.predict <- predict(HW.Train, n.ahead = 18)   
 HW.predict
 
-ts.plot(HR.ts, HW.predict, lty=1:3, col = 1:2, main = "Forecasting Home Run Totals for 2011-2018 Seasons", sub = "Method: Holt-Winters", ylab = "Total Home Runs") 
+ts.plot(HR.ts, HW.predict, lty=1:3, col = 1:2, main = "Forecasting Home Run Totals for 2011-2018 Seasons", ylab = "Total Home Runs") 
 #We see that it recognizes the upward trend we see throughout, but it does so in a slow smooth line.  Not accurate.
 #Move on to more methods
 
@@ -91,7 +91,7 @@ HR.ar$ar
 acf(HR.ar$res[-(1:HR.ar$order)])
 #An AR(3) model doesn't seem like a great fit.  There are about 5 lags that are slightly significant
 acf(HR.ar$res[-(1:HR.ar$order)], lag=50) #First half looks like above, last half has insignificant lags
-acf(HR.ar$resid[-(1:HR.ar$order)])
+acf(HR.ar$resid[-(1:HR.ar$order)], main = "Correlogram: AR(3) Model of Annual Home Runs")
 AIC(HR.ar) #Does not work for ar fxn
 
 
@@ -103,10 +103,11 @@ AIC(HR.ar) #Does not work for ar fxn
 HR.lm <- lm(HR.ts ~ time(HR.ts))
 coef(HR.lm)
 confint(HR.lm)
-acf(HR.lm$residuals, lag = 50)
+par(mfcol = c(2,1))
+acf(HR.lm$residuals, lag = 50, main = "Correlogram: Residuals of HR Linear Regression")
 #there is slow decay in the residuals and it cycles to negative magnitude
 #Need to look into seasonal effects
-pacf(HR.lm$residuals) #Looks very strange.  This simple model might not be good enough.
+pacf(HR.lm$residuals, main = "PACF of Residuals of HR Linear Regression") #Looks very strange.  This simple model might not be good enough.
 HR.lm.aic <- AIC(HR.lm)
 HR.lm.aic
 
@@ -134,7 +135,8 @@ HR.bestARMA <- best.order
 HR.bestARMA#(1, 0, 1)
 
 HR.ARMA.res <- resid(best.arma)
-acf(HR.ARMA.res) #Significant lags later on
+acf(HR.ARMA.res, main = "Correlogram: Residuals of ARMA(1,1) on Home Runs") #Significant lags later on
+acf(HR.ARMA.res^2, main = "Correlogram: Residuals Squared")
 
 HR.ARMA.aic <- best.aic
 
@@ -144,13 +146,14 @@ rownames(model_compare) <- "AIC"
 model_compare #ARMA is best model so far.
 
 #Trying frequency/spectral model#
+library(tswge)
 #Using ARMA model
 plotts.sample.wge(HR.ts)#Time Series of HRs
 aic5.wge(HR.ts,p=0:6,q=0:2) #Spits out ARMA(4,2) on the time series
 
 plotts.sample.wge(resid(HR.lm))#Time Series of residuals from linear model
 aic5.wge(resid(HR.lm), p=0:6, q=0:2) #Spits out ARMA(1,1) exactly as we saw before
-## AIC selects an ARMA(3,1) stationary model ##
+## AIC selects an ARMA(1,1) stationary model ##
 HR.spec.est<-est.arma.wge(resid(HR.lm),p=1,q=1)
 
 ###Check residuals ###
@@ -162,6 +165,7 @@ ljung.wge(HR.spec.est$res,p=1,q=1) #pvalue under .05 so there is still some vari
 ##########################
 #ARIMA Model/SARIMA Model#
 ##########################
+par(mfcol = c(3,1))
 plot(HR.ts)
 plot(diff(HR.ts))
 plot(diff(log(HR.ts))) #variance switches to high at beginning and small at end
@@ -197,12 +201,13 @@ best.fit.HR
 
 best.arima.HR.aic <- best.arima.HR[[1]]
 model_compare <- cbind(HR.lm.aic, HR.ar.aic, HR.ARMA.aic, best.arima.HR.aic) 
-colnames(model_compare) <- c("LinearModel", "AR(3)","ARMA", "SARIMA")
+colnames(model_compare) <- c("LinearModel", "AR(3)","ARMA(1,1)", "SARIMA(1,2,1,1,2,2)")
 rownames(model_compare) <- "AIC"
 model_compare #SARIMA is best model so far.
 
-acf(resid(best.fit.HR)) #Still doesn't look great.  Check for conditional heteroskedacity
-acf(resid(best.fit.HR)^2) #Definitely some patterned cycling going on here. Move on to GARCH
+par(mfcol = c(2,1))
+acf(resid(best.fit.HR), main = "Correlogram: SARIMA(1,2,1,1,2,2) Residuals of Home Runs") #Still doesn't look great.  Check for conditional heteroskedacity
+acf(resid(best.fit.HR)^2, main = "Squared Residuals") #Definitely some patterned cycling going on here. Move on to GARCH
 
 #############
 #GARCH Model#
@@ -212,8 +217,8 @@ HR.SARIMA.res <- resid(best.fit.HR)
 HR.garch <- garch(HR.SARIMA.res, trace = F)
 HR.garch.res <- resid(HR.garch)[-1]
 
-acf(HR.garch.res)
-acf(HR.garch.res^2)
+acf(HR.garch.res, main = "Correlogram: SARIMA GARCH Residuals of Home Runs")
+acf(HR.garch.res^2, main = "Squared Residuals")
 
 garch.HR.aic <- AIC(HR.garch)
 model_compare <- cbind(HR.lm.aic, HR.ar.aic, HR.ARMA.aic, best.arima.HR.aic, garch.HR.aic) 
@@ -226,16 +231,13 @@ model_compare #GARCH of SARIMA model is best model so far.
 #Try frequency/spectral model#
 #ARIMA, because we assume not stationary, so we difference
 diff.HR <- artrans.wge(resid(HR.lm),phi.tr=1)  #this command is a little cryptic, but means "transform the AR (phi) side of equation by differencing once" 
-plotts.sample.wge(d1.temp,arlimits=TRUE) #Similar to what we saw in the ARIMA above, doesn't have great correlogram
-aic5.wge(d1.temp,p=0:6,q=0:2)# AIC selects an ARMA(3,2)
-diff.HR.est<-est.arma.wge(d1.temp,p=3,q=2)
+plotts.sample.wge(diff.HR,arlimits=TRUE) #Similar to what we saw in the ARIMA above, doesn't have great correlogram
+aic5.wge(diff.HR,p=0:6,q=0:2)# AIC selects an ARMA(0,1)
+diff.HR.est<-est.arma.wge(diff.HR,p=0,q=1)
 ###Check residuals ###
-plotts.sample.wge(diff.HR.est$res,arlimits=TRUE)#acf looks good, though you still see the growing oscillation
-ljung.wge(diff.HR.est$res,p=3,q=2) #We see that all the variance has been accounted for now with the spectral modeling
-#Final Spectral Model
-mean(resid(HR.lm))
-diff.HR.est$phi
-diff.HR.est$theta
+plotts.sample.wge(diff.HR.est$res,arlimits=TRUE)#acf still has the growing pattern
+ljung.wge(diff.HR.est$res,p=0,q=1) #We see that all the variance has been accounted for now with the spectral modeling
+
 
 
 #######################
@@ -273,9 +275,10 @@ for (i in 0:2) for (j in 0:2) {
 bestARMA <- best.order 
 bestARMA#(1, 0, 1)
 
+par(mfrow = c(2,1))
 FARMA.resid <- resid(best.arma)
-acf(FARMA.resid, lag.max = 50) #few significant lags, and magnitude is of those are still low.
-acf(FARMA.resid^2, lag.max = 50) #Still needs some work as there are a couple significant lags and there is a clear pattern in the correlogram.
+acf(FARMA.resid, lag.max = 50, main = "Correlogram: ARFIMA Residuals of Home Runs") #few significant lags, and magnitude is of those are still low.
+acf(FARMA.resid^2, lag.max = 50, main = "Squared Residuals") #Still needs some work as there are a couple significant lags and there is a clear pattern in the correlogram.
 
 #How does the model compare to others I have tried?
 arfima.aic <- best.arma$aic
@@ -291,18 +294,19 @@ model_compare #ARFIMA model is best model so far, by a lot.
 HR.garch_F <- garch(FARMA.resid, trace = F)
 HR.garch_F.res <- resid(HR.garch_F)[-1]
 
-acf(HR.garch_F.res, lag.max = 50)
-acf(HR.garch_F.res^2, lag.max = 50)
+acf(HR.garch_F.res, lag.max = 50, main = "Correlogram: ARFIMA-GARCH Residuals of Home Runs")
+acf(HR.garch_F.res^2, lag.max = 50, main = "Square Residuals")
 
 #How does the model compare to others I have tried?
 garch_f.HR.aic <- AIC(HR.garch_F)
 model_compare <- cbind(HR.lm.aic, HR.ar.aic, HR.ARMA.aic, best.arima.HR.aic, garch.HR.aic, arfima.aic, garch_f.HR.aic) 
-colnames(model_compare) <- c("LinearModel", "AR(3)","ARMA", "SARIMA", "GARCH", "ARFIMA", "GARCH:Frac. Diff")
+colnames(model_compare) <- c("LinearModel", "AR(3)","ARMA", "SARIMA", "GARCH", "ARFIMA", "ARFIMA-GARCH")
 rownames(model_compare) <- "AIC"
 model_compare #GARCH on ARFIMA model provides an improvement on the ARFIMA model.
 
 #To find the model equation, I have to pull the coefficients from the models
 d
+mean(HR.ts)
 summary(HR.garch_F)
 
 
@@ -332,23 +336,81 @@ which(is.na(AttendperG.ts))
 new.AttendperG.ts <- AttendperG.ts[22:length(AttendperG.ts)]
 
 #new imputed time series of attendance per game
-new.imp_AttendperG <- na_kalman(new.AttendperG.ts, model = "auto.arima")
+new.imp_AttendperG <- as.ts(na_kalman(new.AttendperG.ts, model = "auto.arima"))
 plotNA.imputations(AttendperG.ts[22:length(AttendperG.ts)], new.imp_AttendperG)
 
 
 #####################
 #Fitting an AR model#
 #####################
-par(mfcol = c(1,1))
+par(mfcol = c(2,1))
 AttendperG.ar <- ar(new.imp_AttendperG, method = "mle")
 AttendperG.ar$order
 AttendperG.ar$ar
-acf(AttendperG.ar$res[-(1:AttendperG.ar$order)])
+acf(AttendperG.ar$res[-(1:AttendperG.ar$order)], main = "Correlogram: AR(3) Attendence per Game")
 #An AR(3) model Looks like a pretty good fit already.
-acf(AttendperG.ar$res[-(1:AttendperG.ar$order)], lag=50)
-acf((AttendperG.ar$res[-(1:AttendperG.ar$order)])^2, lag=50) #Still looks good.
-pacf(AttendperG.ar$res[-(1:AttendperG.ar$order)])
+#acf(AttendperG.ar$res[-(1:AttendperG.ar$order)], lag=50)
+acf((AttendperG.ar$res[-(1:AttendperG.ar$order)])^2, lag=50, main = "Residuals Squared") #Still looks good.
+#pacf(AttendperG.ar$res[-(1:AttendperG.ar$order)])
 
+#################
+#Try forecasting#
+#################
+#Fitted AR already
+#Predict and plot prediction
+par(mfcol = c(1,1))
+attend.predict <- predict(AttendperG.ar, n.ahead = 20)   
+attend.predict_vals <- attend.predict$pred
+attend.predict_vals
+
+ts.plot(new.imp_AttendperG, attend.predict_vals, lty=c(1,3), col = 1:2, main = "Forecasting Home Run Totals for 2011-2018 Seasons", sub = "AR(3) Model", ylab = "Total Home Runs") 
+
+
+###################
+#Spectral Analysis#
+###################
+#Checking to see if my suspicious that there is signal plus noise in this time series
+#Step 1: Fit regression line to data and find the residuals from the line.
+attend.lm <- lm(new.imp_AttendperG ~ time(new.imp_AttendperG))
+summary(attend.lm)
+str(attend.lm$residuals)
+plotts.wge(new.imp_AttendperG) #There seems to be an upward trend, but pretty linear, maybe some seasonality
+plotts.wge(attend.lm$residuals) #Trend is removed. There are definitely some sharp declines and increases over time in residuals
+acf(attend.lm$residuals) #We see that there is slow dampening, but not so slow I suspect used of fractional differencing.
+
+
+#Step 2: Fit an AR(p) model to phi-hatZ(B) to residuals, and find Y-hat(t)=phi-hatZ(B)*x(t)
+ar.attend <- aic.wge(attend.lm$residuals,p=0:6)
+ar.attend
+#ar.z$p is the order p, where AIC selects p=1
+#ar.z$phi is the vector of p phi values for ar.z$p; phi = 0.8434622
+#Transform the time series based on AR$phi
+attend.trans <- artrans.wge(new.imp_AttendperG, phi.tr=ar.attend$phi)
+
+#Step 3: Transform the independent variable (time): T-hat(t)=phi-hatz(B)*T(t)
+time.trans <- artrans.wge(time(new.imp_AttendperG), phi.tr=ar.attend$phi)
+
+#Step 4: Regress Y-hat(t) on T-hat(t) using OLS.  This is the actual Cochran-Orcutt output, where the test of b=0 occurs.
+### After accounting for serial correlation by use of an AR(1), there is strong evidence that slope is different from 0! 
+fitCO <- lm(attend.trans~time.trans)
+summary(fitCO)
+
+### Tentative signal-plus-noise model: (coefficients from summary(attend.lm)) x(t)=-1262.84+.251.61t+z(t) and a(t) = vara = 1420333
+#Variance is huge, so something to be concerned about
+#and (1-0.8434622B)z(t)=a(t) ###
+
+#Step 5: Evaluate residuals.
+plotts.wge(fitCO$residuals)
+acf(fitCO$residuals, lag.max = 50)
+ljung.wge(fitCO$residuals)
+
+#STEP 6: Evaluate generated realizations from fitted model to see if they are similar to actual data.
+set.seed(79)
+gen.sigplusnoise.wge(126, b0 = -1262.84, b1 = 251.61, phi = ar.attend$phi, vara = ar.attend$vara)
+#Looks a lot like what we saw with the attendance per game time series
+
+#STEP 7: Make forecasts
+fore.sigplusnoise.wge(new.imp_AttendperG,max.p=1,n.ahead=20,limits=FALSE)
 
 
 ###################################################
@@ -357,7 +419,36 @@ pacf(AttendperG.ar$res[-(1:AttendperG.ar$order)])
 ##############
 #VAR analysis#
 ##############
-ccf(HR.ts[22:length(HR.ts)], new.imp_AttendperG) #Looks like a lot of correlation with each other
+#install.packages("vars")
+#install.packages("RColorBrewer")
+library(vars)
+library(RColorBrewer)
 
+ts.plot(HR.ts[22:length(HR.ts)], new.imp_AttendperG, lty= c(1,3), col = c(1, "blue"), main = "Time Series of HRs and Attendance Per Game")
+legend("topleft", legend = c("Home Runs", "Attendance Per Game"), col = c(1,"blue"), lty = c(1,3))
 
+ccf(HR.ts[22:length(HR.ts)], new.imp_AttendperG, main = "Cross-Correlation Function of HRs and Attendance per Game", lag.max = 50) #Looks like a lot of correlation with each other
+acf(ts.union(HR.ts[22:length(HR.ts)], new.imp_AttendperG), lag.max = 50)
 
+var.HR.train.ts <- HR.ts[22:(22+109)]
+var.attend.train.ts <- new.imp_AttendperG[1:110]
+HR.attend.train <- cbind(var.HR.train.ts, var.attend.train.ts)
+
+#Have select the best VAR model given the two time series
+VARselect(HR.attend.train, lag.max = 40, type = "const",season = NULL, exogen = NULL) ## VAR modeling is considered "endogenous")
+#Selected 40 lag max because I saw in ccf that it stops being significant between 30 and 40.
+#AIC selects p = 35
+
+#Fit VAR(35) model
+var.fit <- VAR(HR.attend.train, p = 35, type = "const")
+summary(var.fit)
+
+#Predict based on model fit
+preds.var <- predict(var.fit, n.ahead=17)
+preds.var
+fanchart(preds.var)
+fanchart(preds.var, colors = brewer.pal(n = 8, name = "Blues")) # Change color pallet to make distinguishable. 
+
+par(mfrow = c(2,1))
+ts.plot(HR.ts[22:length(HR.ts)], main = "Annual Home Run Totals from 1892 to 2018", ylab = "Home Runs")
+ts.plot(new.imp_AttendperG, main = "Annual Attendance per Game from 1892 to 2018", ylab = "Attendance per Game")
